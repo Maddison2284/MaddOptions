@@ -1,0 +1,85 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:dev.sqlite"
+}
+
+model Session {
+  id                  String   @id
+  shop                String
+  state               String
+  isOnline            Boolean  @default(false)
+  scope               String?
+  expires             DateTime?
+  accessToken         String
+  userId              BigInt?
+  firstName           String?
+  lastName            String?
+  email               String?
+  accountOwner        Boolean  @default(false)
+  locale              String?
+  collaborator        Boolean? @default(false)
+  emailVerified       Boolean? @default(false)
+  refreshToken        String?
+  refreshTokenExpires DateTime?
+}
+
+model OptionSet {
+  id          Int                @id @default(autoincrement())
+  name        String
+  status      String             @default("active")
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  fields      OptionField[]
+  assignments ProductOptionSet[]
+}
+
+model OptionField {
+  id            Int            @id @default(autoincrement())
+  optionSetId   Int
+  label         String
+  type          String
+  helpText      String?
+  placeholder   String?
+  isRequired    Boolean        @default(false)
+  sortOrder     Int            @default(0)
+  priceMode     String?
+  priceValue    Float?         @default(0)
+  allowMultiple Boolean        @default(false)
+  minSelect     Int?
+  maxSelect     Int?
+  configJson    String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  optionSet     OptionSet      @relation(fields: [optionSetId], references: [id], onDelete: Cascade)
+  choices       OptionChoice[]
+}
+
+model OptionChoice {
+  id              Int         @id @default(autoincrement())
+  fieldId         Int
+  label           String
+  value           String
+  priceMode       String?
+  priceValue      Float?      @default(0)
+  imageUrl        String?
+  colorHex        String?
+  sortOrder       Int         @default(0)
+  linkedVariantId String?
+  configJson      String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  field           OptionField @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+}
+
+model ProductOptionSet {
+  id               Int       @id @default(autoincrement())
+  shopifyProductId String    @unique
+  optionSetId      Int
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  optionSet        OptionSet @relation(fields: [optionSetId], references: [id], onDelete: Cascade)
+}

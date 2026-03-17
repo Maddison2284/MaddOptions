@@ -1,0 +1,552 @@
+{% assign product_form_id = 'product-form-' | append: product.id %}
+{% assign base_price_cents = product.selected_or_first_available_variant.price | default: product.price %}
+
+<div
+  id="maddoptions-root-{{ block.id }}"
+  data-product-id="{{ product.id }}"
+  data-product-form-id="{{ product_form_id }}"
+  data-base-price-cents="{{ base_price_cents }}"
+  style="border:1px solid #e5e7eb; padding:16px; margin-top:16px; border-radius:16px; background:#ffffff;"
+>
+  <div style="font-size:20px; font-weight:700; color:#111827; margin-bottom:6px;">
+    Customize Your Product
+  </div>
+  <div style="color:#6b7280; margin-bottom:14px;">
+    Choose your options below.
+  </div>
+
+  <div class="maddoptions-fields"></div>
+
+  <input
+    type="hidden"
+    name="properties[_maddoptions_json]"
+    form="{{ product_form_id }}"
+    value=""
+    class="maddoptions-json"
+  />
+
+  <input
+    type="hidden"
+    name="properties[_maddoptions_price]"
+    form="{{ product_form_id }}"
+    value="0"
+    class="maddoptions-hidden-price"
+  />
+
+  <div style="margin-top:16px; padding-top:12px; border-top:1px solid #e5e7eb;">
+    <strong style="color:#111827;">Preview Total</strong>
+    <div class="maddoptions-price" style="font-size:22px; margin-top:6px; color:#111827;">
+      $0.00
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  const root = document.getElementById('maddoptions-root-{{ block.id }}');
+  if (!root) return;
+
+  const productId = root.dataset.productId;
+  const formId = root.dataset.productFormId;
+  const basePriceCents = Number(root.dataset.basePriceCents || 0);
+  const fieldsContainer = root.querySelector('.maddoptions-fields');
+  const priceEl = root.querySelector('.maddoptions-price');
+  const hiddenPriceInput = root.querySelector('.maddoptions-hidden-price');
+  const hiddenJsonInput = root.querySelector('.maddoptions-json');
+
+  let optionSetData = null;
+
+  function money(cents) {
+    return '$' + (cents / 100).toFixed(2);
+  }
+
+  function escapeHtml(str) {
+    return String(str || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
+  function getFieldContainer(fieldId) {
+    return root.querySelector('[data-field-id="' + fieldId + '"]');
+  }
+
+  function selectedTextForField(field, wrapper) {
+    if (!wrapper) return '';
+
+    if (field.type === 'dropdown') {
+      const select = wrapper.querySelector('select');
+      return select && select.value ? select.value : '';
+    }
+
+    if (field.type === 'radio' || field.type === 'image' || field.type === 'color' || field.type === 'bundle') {
+      const checked = wrapper.querySelector('input[type="radio"]:checked');
+      return checked ? checked.value : '';
+    }
+
+    if (field.type === 'checkbox') {
+      const checked = [...wrapper.querySelectorAll('input[type="checkbox"]:checked')];
+      return checked.map((i) => i.value).join(', ');
+    }
+
+    if (field.type === 'text' || field.type === 'textarea' || field.type === 'number' || field.type === 'date' || field.type === 'time') {
+      const input = wrapper.querySelector('input, textarea');
+      return input ? input.value : '';
+    }
+
+    if (field.type === 'file_upload') {
+      const hidden = wrapper.querySelector('.maddoptions-file-url');
+      return hidden ? hidden.value : '';
+    }
+
+    return '';
+  }
+
+  function shouldShowField(field) {
+    if (!field.config || !field.config.showIfField || !field.config.showIfValue) return true;
+
+    const dependsOn = optionSetData.fields.find((f) => f.label === field.config.showIfField);
+    if (!dependsOn) return true;
+
+    const dependsWrapper = getFieldContainer(dependsOn.id);
+    const selected = selectedTextForField(dependsOn, dependsWrapper).toLowerCase().trim();
+    const expected = String(field.config.showIfValue || '').toLowerCase().trim();
+
+    return selected.includes(expected);
+  }
+
+  function updateVisibility() {
+    if (!optionSetData) return;
+
+    optionSetData.fields.forEach((field) => {
+      const wrapper = getFieldContainer(field.id);
+      if (!wrapper) return;
+      wrapper.style.display = shouldShowField(field) ? '' : 'none';
+    });
+  }
+
+  function updateHiddenJson() {
+    if (!optionSetData) return;
+
+    const payload = optionSetData.fields
+      .filter((field) => shouldShowField(field))
+      .map((field) => {
+        const wrapper = getFieldContainer(field.id);
+        return {
+          label: field.label,
+          type: field.type,
+          value: selectedTextForField(field, wrapper),
+          bundleGroup: field.config?.bundleGroup || '',
+        };
+      })
+      .filter((item) => item.value);
+
+    hiddenJsonInput.value = JSON.stringify(payload);
+  }
+
+  function updatePrice() {
+    let extra = 0;
+
+    root.querySelectorAll('.maddoptions-price-input').forEach((input) => {
+      const wrapper = input.closest('[data-field-id]');
+      if (wrapper && wrapper.style.display === 'none') return;
+
+      if (input.tagName === 'SELECT') {
+        const selected = input.options[input.selectedIndex];
+        extra += Number(selected?.dataset.price || 0);
+      } else if ((input.type === 'radio' || input.type === 'checkbox') && input.checked) {
+        extra += Number(input.dataset.price || 0);
+      }
+    });
+
+    root.querySelectorAll('.maddoptions-flat-price').forEach((node) => {
+      const wrapper = node.closest('[data-field-id]');
+      if (wrapper && wrapper.style.display !== 'none') {
+        extra += Number(node.dataset.price || 0);
+      }
+    });
+
+    priceEl.textContent = money(basePriceCents + Math.round(extra * 100));
+    hiddenPriceInput.value = extra.toFixed(2);
+    updateHiddenJson();
+  }
+
+  async function uploadFile(file, targetHiddenInput, targetStatus) {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    targetStatus.textContent = 'Uploading...';
+
+    const res = await fetch('/api/upload', {
+      method: 'POST',
+      body: formData,
+    });
+
+    const data = await res.json();
+
+    if (data.ok) {
+      targetHiddenInput.value = data.url;
+      targetStatus.textContent = 'Uploaded';
+      updateHiddenJson();
+    } else {
+      targetStatus.textContent = 'Upload failed';
+    }
+  }
+
+  function renderField(field) {
+    const flatPrice = Number(field.flatPrice || 0);
+
+    if (field.type === 'heading') {
+      return `
+        <div data-field-id="${field.id}" style="margin-bottom:16px;">
+          <div class="maddoptions-flat-price" data-price="${flatPrice}" style="display:none;"></div>
+          <div style="font-size:22px;font-weight:800;color:#111827;">
+            ${escapeHtml(field.config?.paragraphText || field.label)}
+          </div>
+        </div>
+      `;
+    }
+
+    if (field.type === 'paragraph') {
+      return `
+        <div data-field-id="${field.id}" style="margin-bottom:16px;">
+          <div class="maddoptions-flat-price" data-price="${flatPrice}" style="display:none;"></div>
+          <div style="font-size:14px;color:#4b5563;line-height:1.5;">
+            ${escapeHtml(field.config?.paragraphText || field.helpText || field.label)}
+          </div>
+        </div>
+      `;
+    }
+
+    if (field.type === 'text') {
+      return `
+        <div data-field-id="${field.id}" style="margin-bottom:16px;">
+          <div class="maddoptions-flat-price" data-price="${flatPrice}" style="display:none;"></div>
+          <label style="display:block;font-weight:700;margin-bottom:6px;color:#111827;">
+            ${escapeHtml(field.label)} ${field.isRequired ? '*' : ''}
+          </label>
+          <input
+            type="text"
+            name="properties[${escapeHtml(field.label)}]"
+            form="${formId}"
+            placeholder="${escapeHtml(field.placeholder || '')}"
+            ${field.isRequired ? 'required' : ''}
+            style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:10px;"
+          />
+        </div>
+      `;
+    }
+
+    if (field.type === 'textarea') {
+      return `
+        <div data-field-id="${field.id}" style="margin-bottom:16px;">
+          <div class="maddoptions-flat-price" data-price="${flatPrice}" style="display:none;"></div>
+          <label style="display:block;font-weight:700;margin-bottom:6px;color:#111827;">
+            ${escapeHtml(field.label)} ${field.isRequired ? '*' : ''}
+          </label>
+          <textarea
+            name="properties[${escapeHtml(field.label)}]"
+            form="${formId}"
+            rows="4"
+            placeholder="${escapeHtml(field.placeholder || '')}"
+            ${field.isRequired ? 'required' : ''}
+            style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:10px;"
+          ></textarea>
+        </div>
+      `;
+    }
+
+    if (field.type === 'number') {
+      return `
+        <div data-field-id="${field.id}" style="margin-bottom:16px;">
+          <div class="maddoptions-flat-price" data-price="${flatPrice}" style="display:none;"></div>
+          <label style="display:block;font-weight:700;margin-bottom:6px;color:#111827;">
+            ${escapeHtml(field.label)} ${field.isRequired ? '*' : ''}
+          </label>
+          <input
+            type="number"
+            name="properties[${escapeHtml(field.label)}]"
+            form="${formId}"
+            placeholder="${escapeHtml(field.placeholder || '')}"
+            ${field.isRequired ? 'required' : ''}
+            style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:10px;"
+          />
+        </div>
+      `;
+    }
+
+    if (field.type === 'date') {
+      return `
+        <div data-field-id="${field.id}" style="margin-bottom:16px;">
+          <div class="maddoptions-flat-price" data-price="${flatPrice}" style="display:none;"></div>
+          <label style="display:block;font-weight:700;margin-bottom:6px;color:#111827;">
+            ${escapeHtml(field.label)} ${field.isRequired ? '*' : ''}
+          </label>
+          <input
+            type="date"
+            name="properties[${escapeHtml(field.label)}]"
+            form="${formId}"
+            ${field.isRequired ? 'required' : ''}
+            style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:10px;"
+          />
+        </div>
+      `;
+    }
+
+    if (field.type === 'time') {
+      return `
+        <div data-field-id="${field.id}" style="margin-bottom:16px;">
+          <div class="maddoptions-flat-price" data-price="${flatPrice}" style="display:none;"></div>
+          <label style="display:block;font-weight:700;margin-bottom:6px;color:#111827;">
+            ${escapeHtml(field.label)} ${field.isRequired ? '*' : ''}
+          </label>
+          <input
+            type="time"
+            name="properties[${escapeHtml(field.label)}]"
+            form="${formId}"
+            ${field.isRequired ? 'required' : ''}
+            style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:10px;"
+          />
+        </div>
+      `;
+    }
+
+    if (field.type === 'file_upload') {
+      return `
+        <div data-field-id="${field.id}" style="margin-bottom:16px;">
+          <div class="maddoptions-flat-price" data-price="${flatPrice}" style="display:none;"></div>
+          <label style="display:block;font-weight:700;margin-bottom:6px;color:#111827;">
+            ${escapeHtml(field.label)} ${field.isRequired ? '*' : ''}
+          </label>
+          <input
+            type="file"
+            class="maddoptions-file-input"
+            data-field-id="${field.id}"
+            style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:10px;"
+          />
+          <input
+            type="hidden"
+            class="maddoptions-file-url"
+            name="properties[${escapeHtml(field.label)}]"
+            form="${formId}"
+            value=""
+          />
+          <div class="maddoptions-file-status" style="margin-top:6px;font-size:12px;color:#6b7280;"></div>
+        </div>
+      `;
+    }
+
+    if (field.type === 'dropdown') {
+      return `
+        <div data-field-id="${field.id}" style="margin-bottom:16px;">
+          <label style="display:block;font-weight:700;margin-bottom:6px;color:#111827;">
+            ${escapeHtml(field.label)} ${field.isRequired ? '*' : ''}
+          </label>
+          <select
+            name="properties[${escapeHtml(field.label)}]"
+            form="${formId}"
+            class="maddoptions-price-input"
+            ${field.isRequired ? 'required' : ''}
+            style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:10px;"
+          >
+            <option value="" data-price="0">Select an option</option>
+            ${field.choices.map(choice => `
+              <option
+                value="${escapeHtml(choice.label)}"
+                data-price="${Number(choice.price) || 0}"
+                ${choice.config?.defaultSelected ? 'selected' : ''}
+              >
+                ${escapeHtml(choice.label)}${Number(choice.price) !== 0 ? ` (+$${Number(choice.price).toFixed(2)})` : ''}
+              </option>
+            `).join('')}
+          </select>
+        </div>
+      `;
+    }
+
+    if (field.type === 'radio' || field.type === 'bundle') {
+      return `
+        <div data-field-id="${field.id}" style="margin-bottom:16px;">
+          <div style="display:block;font-weight:700;margin-bottom:6px;color:#111827;">
+            ${escapeHtml(field.label)} ${field.isRequired ? '*' : ''}
+          </div>
+          ${field.choices.map(choice => `
+            <label style="display:block;margin-bottom:8px;color:#374151;">
+              <input
+                type="radio"
+                name="properties[${escapeHtml(field.label)}]"
+                value="${escapeHtml(choice.label)}"
+                form="${formId}"
+                class="maddoptions-price-input"
+                data-price="${Number(choice.price) || 0}"
+                ${field.isRequired ? 'required' : ''}
+                ${choice.config?.defaultSelected ? 'checked' : ''}
+              />
+              ${escapeHtml(choice.label)}${Number(choice.price) !== 0 ? ` (+$${Number(choice.price).toFixed(2)})` : ''}
+            </label>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    if (field.type === 'checkbox') {
+      return `
+        <div data-field-id="${field.id}" style="margin-bottom:16px;">
+          <div style="display:block;font-weight:700;margin-bottom:6px;color:#111827;">
+            ${escapeHtml(field.label)}
+          </div>
+          ${field.choices.map(choice => `
+            <label style="display:block;margin-bottom:8px;color:#374151;">
+              <input
+                type="checkbox"
+                name="properties[${escapeHtml(field.label)}][]"
+                value="${escapeHtml(choice.label)}"
+                form="${formId}"
+                class="maddoptions-price-input"
+                data-price="${Number(choice.price) || 0}"
+                ${choice.config?.defaultSelected ? 'checked' : ''}
+              />
+              ${escapeHtml(choice.label)}${Number(choice.price) !== 0 ? ` (+$${Number(choice.price).toFixed(2)})` : ''}
+            </label>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    if (field.type === 'image') {
+      return `
+        <div data-field-id="${field.id}" style="margin-bottom:16px;">
+          <div style="display:block;font-weight:700;margin-bottom:6px;color:#111827;">
+            ${escapeHtml(field.label)} ${field.isRequired ? '*' : ''}
+          </div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;">
+            ${field.choices.map(choice => `
+              <label style="display:inline-block;width:110px;text-align:center;cursor:pointer;">
+                <input
+                  type="radio"
+                  name="properties[${escapeHtml(field.label)}]"
+                  value="${escapeHtml(choice.label)}"
+                  form="${formId}"
+                  class="maddoptions-price-input"
+                  data-price="${Number(choice.price) || 0}"
+                  ${field.isRequired ? 'required' : ''}
+                  ${choice.config?.defaultSelected ? 'checked' : ''}
+                />
+                <div style="
+                  width:90px;
+                  height:90px;
+                  border:1px solid #d1d5db;
+                  border-radius:12px;
+                  margin:6px auto;
+                  background:${choice.imageUrl ? `url('${escapeHtml(choice.imageUrl)}') center/cover` : '#f3f4f6'};
+                "></div>
+                <div style="font-size:12px;color:#374151;">
+                  ${escapeHtml(choice.label)}${Number(choice.price) !== 0 ? ` (+$${Number(choice.price).toFixed(2)})` : ''}
+                </div>
+              </label>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    }
+
+    if (field.type === 'color') {
+      return `
+        <div data-field-id="${field.id}" style="margin-bottom:16px;">
+          <div style="display:block;font-weight:700;margin-bottom:6px;color:#111827;">
+            ${escapeHtml(field.label)} ${field.isRequired ? '*' : ''}
+          </div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;">
+            ${field.choices.map(choice => `
+              <label style="display:inline-block;width:90px;text-align:center;cursor:pointer;">
+                <input
+                  type="radio"
+                  name="properties[${escapeHtml(field.label)}]"
+                  value="${escapeHtml(choice.label)}"
+                  form="${formId}"
+                  class="maddoptions-price-input"
+                  data-price="${Number(choice.price) || 0}"
+                  ${field.isRequired ? 'required' : ''}
+                  ${choice.config?.defaultSelected ? 'checked' : ''}
+                />
+                <div style="
+                  width:40px;
+                  height:40px;
+                  border-radius:999px;
+                  border:1px solid #d1d5db;
+                  margin:6px auto;
+                  background:${escapeHtml(choice.colorHex || '#ccc')};
+                "></div>
+                <div style="font-size:12px;color:#374151;">
+                  ${escapeHtml(choice.label)}${Number(choice.price) !== 0 ? ` (+$${Number(choice.price).toFixed(2)})` : ''}
+                </div>
+              </label>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    }
+
+    return '';
+  }
+
+  fetch(`/apps/maddoptions?product_id=${productId}`)
+    .then(res => res.json())
+    .then(data => {
+      optionSetData = data.optionSet;
+
+      if (!optionSetData) {
+        fieldsContainer.innerHTML = '';
+        priceEl.textContent = money(basePriceCents);
+        return;
+      }
+
+      fieldsContainer.innerHTML = optionSetData.fields.map(renderField).join('');
+      priceEl.textContent = money(basePriceCents);
+
+      root.querySelectorAll('.maddoptions-price-input, input[type="text"], textarea, input[type="number"], input[type="date"], input[type="time"]').forEach((input) => {
+        input.addEventListener('change', () => {
+          updateVisibility();
+          updatePrice();
+        });
+        input.addEventListener('input', () => {
+          updateVisibility();
+          updatePrice();
+        });
+      });
+
+      root.querySelectorAll('.maddoptions-file-input').forEach((input) => {
+        input.addEventListener('change', async (event) => {
+          const file = event.target.files && event.target.files[0];
+          if (!file) return;
+
+          const wrapper = event.target.closest('[data-field-id]');
+          const hidden = wrapper.querySelector('.maddoptions-file-url');
+          const status = wrapper.querySelector('.maddoptions-file-status');
+
+          await uploadFile(file, hidden, status);
+          updateVisibility();
+          updatePrice();
+        });
+      });
+
+      updateVisibility();
+      updatePrice();
+    })
+    .catch((err) => {
+      console.error('MaddOptions load error:', err);
+      fieldsContainer.innerHTML = '<p style="color:#b91c1c;">Could not load product options.</p>';
+      priceEl.textContent = money(basePriceCents);
+    });
+})();
+</script>
+
+{% schema %}
+{
+  "name": "Madd Options",
+  "target": "section",
+  "settings": []
+}
+{% endschema %}
