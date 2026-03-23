@@ -3,9 +3,9 @@ import prisma from "../db.server";
 import { authenticate } from "../shopify.server";
 
 export async function loader({ request }) {
-  try {
-    const { admin } = await authenticate.admin(request);
+  const { admin } = await authenticate.admin(request);
 
+  try {
     const [optionSets, assignments] = await Promise.all([
       prisma.optionSet.findMany({
         include: {
@@ -44,7 +44,7 @@ export async function loader({ request }) {
       title: node.title,
     }));
 
-    const productTitleMap = Object.fromEntries(products.map((p) => [p.id, p.title]));
+    const productTitleMap = Object.fromEntries(products.map((product) => [product.id, product.title]));
 
     const totalFields = optionSets.reduce((sum, set) => sum + set.fields.length, 0);
     const totalAssignments = optionSets.reduce((sum, set) => sum + set.assignments.length, 0);
@@ -78,6 +78,8 @@ export async function loader({ request }) {
       recentAssignments,
     };
   } catch (error) {
+    console.error("Dashboard loader failed", error);
+
     return {
       stats: {
         totalOptionSets: 0,
@@ -240,12 +242,12 @@ export default function DashboardPage() {
         </div>
 
         <div style={statCard()}>
-          <div style={{ color: "#6b7280", fontWeight: 700, fontSize: "13px" }}>PRODUCTS LOADED</div>
+          <div style={{ color: "#6b7280", fontWeight: 700, fontSize: "13px" }}>PRODUCTS</div>
           <div style={{ fontSize: "34px", fontWeight: 900, color: "#111827", marginTop: "8px" }}>
             {stats.totalProductsFetched}
           </div>
           <div style={{ color: "#6b7280", marginTop: "6px", fontSize: "14px" }}>
-            Shopify products fetched for admin use
+            Recently fetched from Shopify Admin
           </div>
         </div>
       </div>
@@ -253,97 +255,67 @@ export default function DashboardPage() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "1.2fr 1fr",
+          gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
           gap: "20px",
         }}
       >
         <div style={card()}>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              gap: "12px",
-              alignItems: "center",
-              marginBottom: "14px",
-              flexWrap: "wrap",
-            }}
-          >
-            <div>
-              <div style={{ fontSize: "22px", fontWeight: 900, color: "#111827" }}>
-                Recent Option Sets
-              </div>
-              <div style={{ fontSize: "14px", color: "#6b7280", marginTop: "4px" }}>
-                Your newest saved builders
-              </div>
-            </div>
-
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <h2 style={{ margin: 0, fontSize: "20px", color: "#111827" }}>Recent Option Sets</h2>
             <Link to="/app/option-sets" style={secondaryLinkButton()}>
-              Manage Sets
+              Manage
             </Link>
           </div>
 
-          {recentSets.length === 0 ? (
-            <div style={{ color: "#6b7280" }}>No option sets yet.</div>
-          ) : (
-            <div style={{ display: "grid", gap: "12px" }}>
-              {recentSets.map((set) => (
+          <div style={{ marginTop: "16px", display: "grid", gap: "12px" }}>
+            {recentSets.length === 0 ? (
+              <div style={{ color: "#6b7280" }}>No option sets created yet.</div>
+            ) : (
+              recentSets.map((set) => (
                 <div
                   key={set.id}
                   style={{
                     border: "1px solid #e5e7eb",
                     borderRadius: "16px",
                     padding: "14px",
-                    background: "#fafafa",
+                    background: "#f9fafb",
                   }}
                 >
-                  <div style={{ fontWeight: 800, color: "#111827", fontSize: "16px" }}>
-                    {set.name}
-                  </div>
-                  <div style={{ color: "#6b7280", fontSize: "14px", marginTop: "6px" }}>
-                    {set.fieldCount} fields • {set.assignmentCount} assigned
+                  <div style={{ fontWeight: 800, color: "#111827" }}>{set.name}</div>
+                  <div style={{ color: "#6b7280", marginTop: "6px", fontSize: "14px" }}>
+                    {set.fieldCount} fields • {set.assignmentCount} assignments
                   </div>
                 </div>
-              ))}
-            </div>
-          )}
+              ))
+            )}
+          </div>
         </div>
 
         <div style={card()}>
-          <div
-            style={{
-              fontSize: "22px",
-              fontWeight: 900,
-              color: "#111827",
-              marginBottom: "14px",
-            }}
-          >
-            Recent Assignments
-          </div>
+          <h2 style={{ margin: 0, fontSize: "20px", color: "#111827" }}>Recent Assignments</h2>
 
-          {recentAssignments.length === 0 ? (
-            <div style={{ color: "#6b7280" }}>No assignments yet.</div>
-          ) : (
-            <div style={{ display: "grid", gap: "12px" }}>
-              {recentAssignments.map((assignment) => (
+          <div style={{ marginTop: "16px", display: "grid", gap: "12px" }}>
+            {recentAssignments.length === 0 ? (
+              <div style={{ color: "#6b7280" }}>No product assignments yet.</div>
+            ) : (
+              recentAssignments.map((assignment) => (
                 <div
                   key={assignment.id}
                   style={{
                     border: "1px solid #e5e7eb",
                     borderRadius: "16px",
                     padding: "14px",
-                    background: "#fafafa",
+                    background: "#f9fafb",
                   }}
                 >
-                  <div style={{ fontWeight: 800, color: "#111827" }}>
-                    {assignment.productTitle}
-                  </div>
-                  <div style={{ color: "#6b7280", fontSize: "14px", marginTop: "6px" }}>
-                    Assigned to: {assignment.optionSetName}
+                  <div style={{ fontWeight: 800, color: "#111827" }}>{assignment.productTitle}</div>
+                  <div style={{ color: "#6b7280", marginTop: "6px", fontSize: "14px" }}>
+                    Connected to {assignment.optionSetName}
                   </div>
                 </div>
-              ))}
-            </div>
-          )}
+              ))
+            )}
+          </div>
         </div>
       </div>
     </div>

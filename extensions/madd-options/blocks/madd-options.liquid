@@ -1,54 +1,147 @@
+{% liquid
+  assign source = block.settings.source | default: 'auto_product_assignment'
+  assign option_set_id = block.settings.option_set_id | strip
+  assign option_set_handle = block.settings.option_set_handle | strip
+%}
+
 <div
   id="maddoptions-root-{{ block.id }}"
   class="maddoptions-root"
   data-product-id="{{ product.id }}"
+  data-source="{{ source }}"
+  data-option-set-id="{{ option_set_id }}"
+  data-option-set-handle="{{ option_set_handle | escape }}"
+  {{ block.shopify_attributes }}
 >
   Loading options...
 </div>
 
 <script>
-(async function() {
-  const root = document.getElementById('maddoptions-root-{{ block.id }}');
-  if (!root) return;
+  (function () {
+    const root = document.getElementById('maddoptions-root-{{ block.id }}');
+    if (!root) return;
 
-  const productId = root.dataset.productId;
+    const productId = root.dataset.productId || '';
+    const source = root.dataset.source || 'auto_product_assignment';
+    const optionSetId = root.dataset.optionSetId || '';
+    const optionSetHandle = root.dataset.optionSetHandle || '';
 
-  try {
-    const res = await fetch(`/apps/maddoptions?product_id=${productId}`);
-    const data = await res.json();
+    const params = new URLSearchParams({ source: source });
 
-    if (!data || !data.optionSet) {
-      root.innerHTML = "No options available";
-      return;
+    if (productId) params.set('product_id', productId);
+    if (optionSetId) params.set('option_set_id', optionSetId);
+    if (optionSetHandle) params.set('option_set_handle', optionSetHandle);
+
+    function escapeHtml(value) {
+      return String(value || '').replace(/[&<>"']/g, function (char) {
+        return ({
+          '&': '&amp;',
+          '<': '&lt;',
+          '>': '&gt;',
+          '"': '&quot;',
+          "'": '&#39;'
+        })[char];
+      });
     }
 
-    const fields = data.optionSet.fields || [];
+    function formatPrice(value) {
+      const amount = Number(value || 0);
+      if (!amount) return '';
+      return amount > 0 ? ` (+$${amount.toFixed(2)})` : '';
+    }
 
-    root.innerHTML = fields.map(field => {
-      return `
-        <div style="margin-bottom: 15px;">
-          <strong>${field.label}</strong><br/>
-          ${field.choices.map(choice => `
-            <label style="display:block; margin-top:5px;">
-              <input type="radio" name="field-${field.id}" value="${choice.value}" />
-              ${choice.label} (+$${choice.price})
-            </label>
-          `).join("")}
-        </div>
-      `;
-    }).join("");
+    function renderChoices(field) {
+      const type = field.type || 'radio';
+      const inputType = type === 'checkbox' ? 'checkbox' : 'radio';
+      const choices = Array.isArray(field.choices) ? field.choices : [];
 
-  } catch (e) {
-    console.error(e);
-    root.innerHTML = "Error loading options";
-  }
-})();
+      if (choices.length === 0) {
+        return '<div style="color:#6b7280; font-size:14px;">No choices configured yet.</div>';
+      }
+
+      return choices.map(function (choice) {
+        return `
+          <label style="display:block; margin-top:8px; color:#111827;">
+            <input
+              type="${inputType}"
+              name="field-${field.id}${inputType === 'checkbox' ? '[]' : ''}"
+              value="${escapeHtml(choice.value || choice.label || '')}"
+              ${field.isRequired && inputType === 'radio' ? 'required' : ''}
+            />
+            ${escapeHtml(choice.label || choice.value || 'Option')}${formatPrice(choice.price)}
+          </label>
+        `;
+      }).join('');
+    }
+
+    function renderFields(fields) {
+      return fields.map(function (field) {
+        return `
+          <div style="margin-bottom:16px; padding:16px; border:1px solid #e5e7eb; border-radius:12px; background:#ffffff;">
+            <div style="font-weight:600; color:#111827; margin-bottom:8px;">
+              ${escapeHtml(field.label || 'Option')}${field.isRequired ? ' *' : ''}
+            </div>
+            ${field.helpText ? `<div style="color:#6b7280; font-size:14px; margin-bottom:8px;">${escapeHtml(field.helpText)}</div>` : ''}
+            ${renderChoices(field)}
+          </div>
+        `;
+      }).join('');
+    }
+
+    fetch(`/apps/maddoptions?${params.toString()}`, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json'
+      }
+    })
+      .then(function (response) {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json();
+      })
+      .then(function (data) {
+        if (!data || !data.ok || !data.optionSet) {
+          root.innerHTML = '<div style="color:#6b7280;">No options available for this product.</div>';
+          return;
+        }
+
+        const fields = Array.isArray(data.optionSet.fields) ? data.optionSet.fields : [];
+        root.innerHTML = renderFields(fields);
+      })
+      .catch(function (error) {
+        console.error('MaddOptions app proxy load failed', error);
+        root.innerHTML = '<div style="color:#b91c1c;">Error loading options.</div>';
+      });
+  })();
 </script>
 
 {% schema %}
 {
   "name": "Madd Options",
   "target": "section",
-  "settings": []
+  "settings": [
+    {
+      "type": "select",
+      "id": "source",
+      "label": "Option source",
+      "default": "auto_product_assignment",
+      "options": [
+        { "value": "auto_product_assignment", "label": "Use product assignment" },
+        { "value": "manual_option_set_id", "label": "Manual option set ID" },
+        { "value": "manual_option_set_handle", "label": "Manual option set handle" }
+      ]
+    },
+    {
+      "type": "text",
+      "id": "option_set_id",
+      "label": "Manual option set ID",
+      "info": "Used only when source is Manual option set ID."
+    },
+    {
+      "type": "text",
+      "id": "option_set_handle",
+      "label": "Manual option set handle",
+      "info": "Used only when source is Manual option set handle."
+    }
+  ]
 }
 {% endschema %}

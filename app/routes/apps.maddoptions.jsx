@@ -1,4 +1,5 @@
 import prisma from "../db.server";
+import { authenticate } from "../shopify.server";
 
 function parseJson(value, fallback = {}) {
   try {
@@ -64,81 +65,107 @@ function normalizeOptionSet(optionSet) {
   };
 }
 
+async function findOptionSet({ source, productId, optionSetId, optionSetHandle }) {
+  if (source === "manual_option_set_id" && optionSetId) {
+    return prisma.optionSet.findUnique({
+      where: { id: Number(optionSetId) },
+      include: {
+        fields: {
+          include: {
+            choices: true,
+          },
+          orderBy: { sortOrder: "asc" },
+        },
+      },
+    });
+  }
+
+  if (source === "manual_option_set_handle" && optionSetHandle) {
+    const allSets = await prisma.optionSet.findMany({
+      include: {
+        fields: {
+          include: {
+            choices: true,
+          },
+          orderBy: { sortOrder: "asc" },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    return allSets.find((set) => slugify(set.name) === slugify(optionSetHandle)) || null;
+  }
+
+  if (!productId) {
+    return null;
+  }
+
+  const assignment = await prisma.productOptionSet.findFirst({
+    where: {
+      shopifyProductId: String(productId),
+    },
+    include: {
+      optionSet: {
+        include: {
+          fields: {
+            include: {
+              choices: true,
+            },
+            orderBy: { sortOrder: "asc" },
+          },
+        },
+      },
+    },
+  });
+
+  return assignment?.optionSet || null;
+}
+
 export async function loader({ request }) {
   try {
-    const url = new URL(request.url);
+    await authenticate.public.appProxy(request);
 
+    const url = new URL(request.url);
     const source = url.searchParams.get("source") || "auto_product_assignment";
     const productId = url.searchParams.get("product_id");
     const optionSetId = url.searchParams.get("option_set_id");
     const optionSetHandle = url.searchParams.get("option_set_handle");
 
-    let optionSet = null;
-
-    if (source === "manual_option_set_id" && optionSetId) {
-      optionSet = await prisma.optionSet.findUnique({
-        where: { id: Number(optionSetId) },
-        include: {
-          fields: {
-            include: {
-              choices: true,
-            },
-            orderBy: { sortOrder: "asc" },
-          },
+    if (source === "auto_product_assignment" && !productId) {
+      return jsonResponse(
+        {
+          ok: false,
+          error: "Missing product_id for auto product assignment",
+          optionSet: null,
         },
-      });
-    } else if (source === "manual_option_set_handle" && optionSetHandle) {
-      const allSets = await prisma.optionSet.findMany({
-        include: {
-          fields: {
-            include: {
-              choices: true,
-            },
-            orderBy: { sortOrder: "asc" },
-          },
-        },
-        orderBy: { createdAt: "desc" },
-      });
-
-      optionSet =
-        allSets.find((set) => slugify(set.name) === slugify(optionSetHandle)) || null;
-    } else {
-      if (!productId) {
-        return jsonResponse({ error: "Missing product_id", optionSet: null }, 400);
-      }
-
-      const assignment = await prisma.productOptionSet.findFirst({
-        where: {
-          shopifyProductId: String(productId),
-        },
-        include: {
-          optionSet: {
-            include: {
-              fields: {
-                include: {
-                  choices: true,
-                },
-                orderBy: { sortOrder: "asc" },
-              },
-            },
-          },
-        },
-      });
-
-      optionSet = assignment?.optionSet || null;
+        400,
+      );
     }
 
+    const optionSet = await findOptionSet({
+      source,
+      productId,
+      optionSetId,
+      optionSetHandle,
+    });
+
     return jsonResponse({
+      ok: true,
+      source,
+      productId: productId || null,
       optionSet: normalizeOptionSet(optionSet),
     });
   } catch (error) {
+    const status = error instanceof Response ? error.status : 500;
+
     return jsonResponse(
       {
-        error: "Server error",
+        ok: false,
+        error: status === 401 ? "Unauthorized app proxy request" : "Server error",
         details: String(error),
         optionSet: null,
       },
-      500
+      status,
     );
   }
 }

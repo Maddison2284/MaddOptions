@@ -32,6 +32,10 @@ Press P to open the URL to your app. Once you click install, you can start devel
 
 Local development is powered by [the Shopify CLI](https://shopify.dev/docs/apps/tools/cli). It logs into your account, connects to an app, provides environment variables, updates remote config, creates a tunnel and provides commands to generate extensions.
 
+### MaddOptions config workflow
+
+For this repo, keep the committed `shopify.app.toml` pinned to the deployed domain `https://app.maddoptions.com`, and create a separate local development config for Shopify CLI tunnel testing. See `docs/shopify-cli-reconnect.md` for the exact reconnect steps and command order.
+
 ### Authenticating and querying data
 
 To authenticate and query data you can use the `shopify` const that is exported from `/app/shopify.server.js`:

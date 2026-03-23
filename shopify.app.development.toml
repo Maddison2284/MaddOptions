@@ -1,37 +1,37 @@
-# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+# Shopify CLI development config for MaddOptions.
+# Update `client_id` if you link this repo to a different Shopify dev app.
+# This file is intentionally tracked so `shopify app dev --config development`
+# works out of the box instead of failing with "file not found".
 
-client_id = "609278136eb7513858da1379e6d055fb"
-name = "MaddOptions"
+client_id = "REPLACE_WITH_DEV_APP_CLIENT_ID"
+name = "MaddOptions Dev"
 application_url = "https://app.maddoptions.com"
 embedded = true
 
 [build]
-# Keep the committed config pinned to the deployed domain.
-# Use the tracked `shopify.app.development.toml`
-# when you want Shopify CLI to rewrite URLs to a temporary tunnel.
-automatically_update_urls_on_dev = false
+automatically_update_urls_on_dev = true
 include_config_on_deploy = true
 
 [webhooks]
 api_version = "2026-04"
 
   [[webhooks.subscriptions]]
-  topics = [ "app/scopes_update" ]
+  topics = ["app/scopes_update"]
   uri = "/webhooks/app/scopes_update"
 
   [[webhooks.subscriptions]]
-  topics = [ "app/uninstalled" ]
+  topics = ["app/uninstalled"]
   uri = "/webhooks/app/uninstalled"
 
 [access_scopes]
 scopes = "write_metaobject_definitions,write_metaobjects,write_products"
-optional_scopes = [ ]
+optional_scopes = []
 use_legacy_install_flow = false
 
 [auth]
 redirect_urls = [
   "https://app.maddoptions.com/auth/callback",
-  "https://app.maddoptions.com/api/auth/callback"
+  "https://app.maddoptions.com/api/auth/callback",
 ]
 
 [app_proxy]
