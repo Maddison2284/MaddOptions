@@ -3,57 +3,77 @@ import prisma from "../db.server";
 import { authenticate } from "../shopify.server";
 
 export async function loader({ request }) {
-  const { admin } = await authenticate.admin(request);
-
   try {
-    const [optionSets, assignments] = await Promise.all([
-      prisma.optionSet.findMany({
-        include: {
-          fields: true,
-          assignments: true,
-        },
-        orderBy: { createdAt: "desc" },
-      }),
-      prisma.productOptionSet.findMany({
-        orderBy: { createdAt: "desc" },
-        take: 10,
-        include: {
-          optionSet: true,
-        },
-      }),
-    ]);
+    const authResult = await authenticate.admin(request);
+    const admin = authResult?.admin;
 
-    const productsResponse = await admin.graphql(`
-      #graphql
-      query GetProducts {
-        products(first: 100) {
-          edges {
-            node {
-              id
-              title
+    let optionSets = [];
+    let assignments = [];
+    let products = [];
+
+    try {
+      [optionSets, assignments] = await Promise.all([
+        prisma.optionSet.findMany({
+          include: {
+            fields: true,
+            assignments: true,
+          },
+          orderBy: { createdAt: "desc" },
+        }),
+        prisma.productOptionSet.findMany({
+          orderBy: { createdAt: "desc" },
+          take: 10,
+          include: {
+            optionSet: true,
+          },
+        }),
+      ]);
+    } catch (dbError) {
+      console.error("Dashboard DB query failed:", dbError);
+    }
+
+    if (admin) {
+      try {
+        const productsResponse = await admin.graphql(`
+          #graphql
+          query GetProducts {
+            products(first: 25) {
+              edges {
+                node {
+                  id
+                  title
+                }
+              }
             }
           }
-        }
+        `);
+
+        const productsJson = await productsResponse.json();
+
+        products = (productsJson?.data?.products?.edges || []).map(({ node }) => ({
+          id: node.id.split("/").pop(),
+          title: node.title,
+        }));
+      } catch (graphqlError) {
+        console.error("Dashboard Shopify GraphQL failed:", graphqlError);
       }
-    `);
+    }
 
-    const productsJson = await productsResponse.json();
+    const productTitleMap = Object.fromEntries(
+      products.map((product) => [product.id, product.title]),
+    );
 
-    const products = (productsJson?.data?.products?.edges || []).map(({ node }) => ({
-      id: node.id.split("/").pop(),
-      title: node.title,
-    }));
-
-    const productTitleMap = Object.fromEntries(products.map((product) => [product.id, product.title]));
-
-    const totalFields = optionSets.reduce((sum, set) => sum + set.fields.length, 0);
-    const totalAssignments = optionSets.reduce((sum, set) => sum + set.assignments.length, 0);
+    const totalFields = optionSets.reduce((sum, set) => sum + (set.fields?.length || 0), 0);
+    const totalAssignments = optionSets.reduce(
+      (sum, set) => sum + (set.assignments?.length || 0),
+      0,
+    );
 
     const recentSets = optionSets.slice(0, 6).map((set) => ({
       id: set.id,
       name: set.name,
-      fieldCount: set.fields.length,
-      assignmentCount: set.assignments.length,
+      fieldCount: set.fields?.length || 0,
+      assignmentCount: set.assignments?.length || 0,
       updatedAt: set.updatedAt,
     }));
 
@@ -68,6 +88,13 @@ export async function loader({ request }) {
     }));
 
     return {
+      ok: true,
+      debug: {
+        authenticated: !!admin,
+        optionSetCount: optionSets.length,
+        assignmentCount: assignments.length,
+        productCount: products.length,
+      },
       stats: {
         totalOptionSets: optionSets.length,
         totalFields,
@@ -78,9 +105,14 @@ export async function loader({ request }) {
       recentAssignments,
     };
   } catch (error) {
-    console.error("Dashboard loader failed", error);
+    console.error("Dashboard loader crashed:", error);
 
     return {
+      ok: false,
+      debug: {
+        authenticated: false,
+        error: error?.message || "Unknown loader error",
+      },
       stats: {
         totalOptionSets: 0,
         totalFields: 0,
@@ -151,7 +183,8 @@ function secondaryLinkButton() {
 }
 
 export default function DashboardPage() {
-  const { stats, recentSets, recentAssignments } = useLoaderData();
+  const data = useLoaderData();
+  const { ok, debug, stats, recentSets, recentAssignments } = data;
 
   return (
     <div>
@@ -201,6 +234,45 @@ export default function DashboardPage() {
             </Link>
           </div>
         </div>
+      </div>
+
+      {!ok && (
+        <div
+          style={{
+            ...card(),
+            marginBottom: "20px",
+            border: "1px solid #fca5a5",
+            background: "#fef2f2",
+            color: "#991b1b",
+          }}
+        >
+          <div style={{ fontWeight: 900, marginBottom: "8px" }}>
+            Dashboard loaded with fallback mode
+          </div>
+          <div style={{ fontSize: "14px", lineHeight: 1.6 }}>
+            The page rendered, but the loader hit an error. Check your terminal for:
+            <br />
+            <code>Dashboard loader crashed:</code>
+          </div>
+          <pre style={{ whiteSpace: "pre-wrap", marginTop: "10px", fontSize: "12px" }}>
+            {JSON.stringify(debug, null, 2)}
+          </pre>
+        </div>
+      )}
+
+      <div
+        style={{
+          ...card(),
+          marginBottom: "20px",
+          background: "#f9fafb",
+        }}
+      >
+        <div style={{ fontWeight: 900, color: "#111827", marginBottom: "8px" }}>
+          Debug
+        </div>
+        <pre style={{ whiteSpace: "pre-wrap", fontSize: "12px", margin: 0 }}>
+          {JSON.stringify(debug, null, 2)}
+        </pre>
       </div>
 
       <div

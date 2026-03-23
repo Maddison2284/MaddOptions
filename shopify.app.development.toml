@@ -1,11 +1,6 @@
-# Shopify CLI development config for MaddOptions.
-# Update `client_id` if you link this repo to a different Shopify dev app.
-# This file is intentionally tracked so `shopify app dev --config development`
-# works out of the box instead of failing with "file not found".
-
-client_id = "REPLACE_WITH_DEV_APP_CLIENT_ID"
+client_id = "609278136eb7513858da1379e6d055fb"
 name = "MaddOptions Dev"
-application_url = "https://app.maddoptions.com"
+application_url = "https://localhost"
 embedded = true
 
 [build]
@@ -15,13 +10,13 @@ include_config_on_deploy = true
 [webhooks]
 api_version = "2026-04"
 
-  [[webhooks.subscriptions]]
-  topics = ["app/scopes_update"]
-  uri = "/webhooks/app/scopes_update"
+[[webhooks.subscriptions]]
+topics = ["app/scopes_update"]
+uri = "/webhooks/app/scopes_update"
 
-  [[webhooks.subscriptions]]
-  topics = ["app/uninstalled"]
-  uri = "/webhooks/app/uninstalled"
+[[webhooks.subscriptions]]
+topics = ["app/uninstalled"]
+uri = "/webhooks/app/uninstalled"
 
 [access_scopes]
 scopes = "write_metaobject_definitions,write_metaobjects,write_products"
@@ -30,11 +25,11 @@ use_legacy_install_flow = false
 
 [auth]
 redirect_urls = [
-  "https://app.maddoptions.com/auth/callback",
-  "https://app.maddoptions.com/api/auth/callback",
+  "https://localhost/auth/callback",
+  "https://localhost/api/auth/callback",
 ]
 
 [app_proxy]
-url = "https://app.maddoptions.com/apps/maddoptions"
+url = "https://localhost/apps/maddoptions"
 subpath = "maddoptions"
 prefix = "apps"
