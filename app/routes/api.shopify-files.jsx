@@ -1,36 +1,57 @@
 import { authenticate } from "../shopify.server";
 
-export async function loader({ request }) {
-  const { admin } = await authenticate.admin(request);
+function json(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      "Content-Type": "application/json",
+      "Cache-Control": "no-store",
+    },
+  });
+}
 
-  const response = await admin.graphql(`
-    #graphql
-    query GetFiles {
-      files(first: 50, query: "media_type:IMAGE") {
-        edges {
-          node {
-            id
-            ... on MediaImage {
-              image {
-                url
-                altText
+export async function loader({ request }) {
+  try {
+    const { admin } = await authenticate.admin(request);
+
+    const response = await admin.graphql(`
+      #graphql
+      query GetFiles {
+        files(first: 50, query: "media_type:IMAGE") {
+          edges {
+            node {
+              id
+              ... on MediaImage {
+                image {
+                  url
+                  altText
+                }
               }
             }
           }
         }
       }
-    }
-  `);
+    `);
 
-  const json = await response.json();
+    const payload = await response.json();
 
-  const files = (json?.data?.files?.edges || [])
-    .map(({ node }) => ({
-      id: node.id,
-      url: node.image?.url || "",
-      alt: node.image?.altText || "",
-    }))
-    .filter((file) => file.url);
+    const files = (payload?.data?.files?.edges || [])
+      .map(({ node }) => ({
+        id: node.id,
+        url: node.image?.url || "",
+        alt: node.image?.altText || "",
+      }))
+      .filter((file) => file.url);
 
-  return { files };
+    return json({ ok: true, files });
+  } catch (error) {
+    return json(
+      {
+        ok: false,
+        files: [],
+        error: String(error),
+      },
+      500,
+    );
+  }
 }

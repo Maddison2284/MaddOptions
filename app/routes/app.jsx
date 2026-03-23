@@ -1,23 +1,24 @@
 import { Outlet } from "react-router";
 import { NavMenu } from "@shopify/app-bridge-react";
+import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 
 export async function loader({ request }) {
-  try {
-    await authenticate.admin(request);
-  } catch (e) {
-    // Prevent crash during dev preview boot
-    return null;
-  }
-
+  await authenticate.admin(request);
   return null;
 }
+
+export const headers = (headersArgs) => {
+  return boundary.headers(headersArgs);
+};
 
 export default function AppLayout() {
   return (
     <>
       <NavMenu>
-        <a href="/app" rel="home">Dashboard</a>
+        <a href="/app" rel="home">
+          Dashboard
+        </a>
         <a href="/app/option-sets">Option Sets</a>
         <a href="/app/templates">Templates</a>
         <a href="/app/settings">Settings</a>
