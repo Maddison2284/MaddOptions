@@ -1,0 +1,54 @@
+<div
+  id="maddoptions-root-{{ block.id }}"
+  class="maddoptions-root"
+  data-product-id="{{ product.id }}"
+>
+  Loading options...
+</div>
+
+<script>
+(async function() {
+  const root = document.getElementById('maddoptions-root-{{ block.id }}');
+  if (!root) return;
+
+  const productId = root.dataset.productId;
+
+  try {
+    const res = await fetch(`/apps/maddoptions?product_id=${productId}`);
+    const data = await res.json();
+
+    if (!data || !data.optionSet) {
+      root.innerHTML = "No options available";
+      return;
+    }
+
+    const fields = data.optionSet.fields || [];
+
+    root.innerHTML = fields.map(field => {
+      return `
+        <div style="margin-bottom: 15px;">
+          <strong>${field.label}</strong><br/>
+          ${field.choices.map(choice => `
+            <label style="display:block; margin-top:5px;">
+              <input type="radio" name="field-${field.id}" value="${choice.value}" />
+              ${choice.label} (+$${choice.price})
+            </label>
+          `).join("")}
+        </div>
+      `;
+    }).join("");
+
+  } catch (e) {
+    console.error(e);
+    root.innerHTML = "Error loading options";
+  }
+})();
+</script>
+
+{% schema %}
+{
+  "name": "Madd Options",
+  "target": "section",
+  "settings": []
+}
+{% endschema %}
