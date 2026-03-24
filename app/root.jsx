@@ -1,47 +1,37 @@
-import {
-  Links,
-  Meta,
-  Outlet,
-  Scripts,
-  ScrollRestoration,
-  useLoaderData,
-  useLocation,
-} from "react-router";
-import { AppProvider } from "@shopify/shopify-app-react-router/react";
-
-export async function loader() {
-  return {
-    apiKey: process.env.SHOPIFY_API_KEY || "",
-  };
-}
-
-function AppShell() {
-  const { apiKey } = useLoaderData();
-  const location = useLocation();
-
-  const isStorefrontRoute = location.pathname.startsWith("/apps/");
-
-  if (isStorefrontRoute) {
-    return <Outlet />;
-  }
-
-  return (
-    <AppProvider embedded apiKey={apiKey}>
-      <Outlet />
-    </AppProvider>
-  );
-}
+import { Outlet, Links, Meta, Scripts, ScrollRestoration } from "react-router";
 
 export default function App() {
+  return <Outlet />;
+}
+
+export function Layout({ children }) {
   return (
     <html>
       <head>
+        <meta charSet="utf-8" />
+        <meta name="viewport" content="width=device-width,initial-scale=1" />
         <Meta />
         <Links />
       </head>
-      <body>
-        <AppShell />
+      <body style={{ margin: 0, fontFamily: "Arial, sans-serif", background: "#f6f6f7" }}>
+        {children}
         <ScrollRestoration />
+        <Scripts />
+      </body>
+    </html>
+  );
+}
+
+export function ErrorBoundary() {
+  return (
+    <html>
+      <head>
+        <meta charSet="utf-8" />
+        <meta name="viewport" content="width=device-width,initial-scale=1" />
+        <title>MaddOptions Error</title>
+      </head>
+      <body style={{ fontFamily: "Arial, sans-serif", padding: "24px" }}>
+        <h1>Root Error Boundary Triggered</h1>
         <Scripts />
       </body>
     </html>
