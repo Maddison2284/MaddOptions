@@ -1,6 +1,6 @@
 client_id = "609278136eb7513858da1379e6d055fb"
-name = "MaddOptions Dev"
-application_url = "http://127.0.0.1:3000"
+name = "MaddOptions"
+application_url = ""
 embedded = true
 
 [build]
@@ -24,12 +24,9 @@ optional_scopes = []
 use_legacy_install_flow = false
 
 [auth]
-redirect_urls = [
-  "https://127.0.0.1:3000/auth/callback",
-  "https://127.0.0.1:3000/api/auth/callback",
-]
+redirect_urls = []
 
 [app_proxy]
-url = "https://127.0.0.1:3000/apps/maddoptions"
+url = ""
 subpath = "maddoptions"
 prefix = "apps"

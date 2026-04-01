@@ -1,6 +1,12 @@
-import { Outlet, Links, Meta, Scripts, ScrollRestoration } from "react-router";
+import {
+  Outlet,
+  Links,
+  Meta,
+  Scripts,
+  ScrollRestoration,
+} from "react-router";
 
-export default function App() {
+export default function Root() {
   return <Outlet />;
 }
 
@@ -13,7 +19,13 @@ export function Layout({ children }) {
         <Meta />
         <Links />
       </head>
-      <body style={{ margin: 0, fontFamily: "Arial, sans-serif", background: "#f6f6f7" }}>
+      <body
+        style={{
+          margin: 0,
+          fontFamily: "Arial, sans-serif",
+          background: "#f6f6f7",
+        }}
+      >
         {children}
         <ScrollRestoration />
         <Scripts />
@@ -29,6 +41,8 @@ export function ErrorBoundary() {
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width,initial-scale=1" />
         <title>MaddOptions Error</title>
+        <Meta />
+        <Links />
       </head>
       <body style={{ fontFamily: "Arial, sans-serif", padding: "24px" }}>
         <h1>Root Error Boundary Triggered</h1>

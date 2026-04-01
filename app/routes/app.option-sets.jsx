@@ -131,7 +131,7 @@ function calculatePreviewPrice(basePrice, options, selections) {
 }
 
 export async function loader({ request }) {
-  const { admin } = await authenticate.admin(request);
+  await authenticate.admin(request);
 
   const optionSets = await prisma.optionSet.findMany({
     include: {
@@ -146,64 +146,8 @@ export async function loader({ request }) {
     orderBy: { createdAt: "desc" },
   });
 
-  const productsResponse = await admin.graphql(`
-    #graphql
-    query GetProductsAndVariants {
-      products(first: 100) {
-        edges {
-          node {
-            id
-            title
-            variants(first: 100) {
-              edges {
-                node {
-                  id
-                  title
-                  price
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  `);
-
-  const productsJson = await productsResponse.json();
-
-  const products = (productsJson?.data?.products?.edges || []).map(({ node }) => ({
-    id: node.id.split("/").pop(),
-    gid: node.id,
-    title: node.title,
-    variants: (node.variants?.edges || []).map(({ node: variantNode }) => ({
-      id: variantNode.id.split("/").pop(),
-      gid: variantNode.id,
-      title: variantNode.title,
-      price: variantNode.price,
-    })),
-  }));
-
-  const collectionsResponse = await admin.graphql(`
-    #graphql
-    query GetCollections {
-      collections(first: 100) {
-        edges {
-          node {
-            id
-            title
-          }
-        }
-      }
-    }
-  `);
-
-  const collectionsJson = await collectionsResponse.json();
-
-  const collections = (collectionsJson?.data?.collections?.edges || []).map(({ node }) => ({
-    id: node.id.split("/").pop(),
-    gid: node.id,
-    title: node.title,
-  }));
+  const products = [];
+  const collections = [];
 
   return { optionSets, products, collections };
 }
